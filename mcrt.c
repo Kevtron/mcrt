@@ -1,106 +1,133 @@
 #include<stdio.h>
 #include<stdlib.h>
 #include<math.h>
-#define pi M_PI
-#define max RAND_MAX
-#define mubins 10.0
-#define nphotons 1000000
+#include<time.h>
+#define MUBINS 10
+#define NPHOTONS 1000000
+#define ALBEDO 1.0
+#define TAUMAX 10.0
+
 /*
-This program calculates the emergent intensity from
-*/
-
+ This program calculates the emergent intensity from a plane parallel slab of optical depth TAUMAX, using NPHOTONS photon packets.
+ */
 /*==============================================================*/
-/*------------------Structure definitions-----------------------*/
+/*---------------------Struct definitions-----------------------*/
 /*==============================================================*/
-typedef struct{float cost,sint,phi,cosp,sinp,x,y,z;}photon;
-typedef struct{int bins[(int)mubins]; float theta[(int)mubins];}hist;
-
+typedef struct {float cost, phi, sint, cosp, sinp, x, y, z;}photon;
+typedef struct {int bins[MUBINS];float theta[MUBINS];}hist;
 /*==============================================================*/
 /*------------------Function declarations-----------------------*/
 /*==============================================================*/
-float gen_rand(void);
-hist binphotons(float mu[nphotons]);
-photon newphoton();
-photon scatter(float albedo, float taumax);
-float intensity();
+hist *binphotons(float mu[]);
+photon *newphoton();
+void *scatter(photon *p);
+void *intensity(hist *binned, float *p);
 /*==============================================================*/
 /*------------Main loop, loop over stellar photons--------------*/
 /*==============================================================*/
 int main(int argc, char *argv[]){
-	float albedo, taumax, mu[nphotons];
-	int a[10],i;
-	//pi = M_PI; //pi defined in math.h 
-	//max = RAND_MAX; //need rands between 0 and 1
-	//photon p={1,1,1,1,1};
-	for(i=0;i<10;i++){
-	printf("%f\n",(float)rand()/max);
+	int i;
+	static float mu[NPHOTONS];
+	static float intens[MUBINS];
+	float *intensp;
+	hist workspace;
+	//workspace.bins[MUBINS]={0};
+	hist *histp;
+	static photon test;
+	photon *working;
+	working = &test;
+	histp = &workspace;
+	intensp = &intens;
+	FILE *file;
+	srand(time(NULL));
+	/* Initializing works.*/
+	for(i=0;i<=NPHOTONS;i++){
+		*working = *newphoton();
+		*scatter(working);
+		mu[i]=working->cost;
+		if(i%10000==0){
+			printf("%d photons completed\n",i);
+		}
 	}
-	//printf("%f,%f\n",p.cost,p.x);
-	/*for(i=0;i<10;i++){
-		a[i]=i*i;
-		printf("%d,%d\n",i,a[i]);
-		}*/
+	*histp = *binphotons(mu);
+	intensity(histp, intensp);
+	file=fopen("intensity-c.dat","a+");
+	fprintf(file,"%s","#intensity, theta\n");
+	for(i=0;i<10;i++){
+		fprintf(file,"%f\t%f\n",intens[i],histp->theta[i]);
+	}
+	fclose(file); /*done!*/ 
+	return 0;
 }
 /*==============================================================*/
 /*------------------Function definitions------------------------*/
 /*==============================================================*/
 
 /*-----------------------New photons----------------------------*/
-photon newphoton(){
-	photon new;
-	new.cost = sqrt((float)rand()/max);
-	new.phi = 2.0*pi*(float)rand()/max;
-	new.sint =  sqrt(1-new.cost*new.cost);
-	new.cosp = cos(new.phi);
-	new.sinp = sin(new.phi);
-	new.x = 0.0;
-	new.y = 0.0;
-	new.z = 0.0;
+photon *newphoton(){
+	photon *new;
+	photon test;
+	new = &test;
+	float tmp;
+	new->cost = sqrt((float)rand()/RAND_MAX); 				//cos theta
+	new->phi = 2.0*M_PI*(float)rand()/RAND_MAX;			// phi
+	tmp = new->cost;
+	new->sint =  sqrt(1-tmp*tmp); 				//sin theta
+	new->cosp = cos(new->phi);						//cos PHI
+	new->sinp = sin(new->phi);						//sin phi
+	new->x = 0.0;							// x
+	new->y = 0.0;							// y
+	new->z = 0.0;							// z
 	return new;
 }
 
 /*-------------------Scatter photons----------------------------*/
-photon scatter(float albedo, float taumax){
-	photon scatter;
+void *scatter(photon *scatterptr){
 	float tau,s;
-	scatter.cost = 2.0*((float)rand()/max) - 1.0;
-	scatter.sint = sqrt(1-scatter.cost*scatter.cost);
-	scatter.phi = 2.0*pi*((float)rand()/max);
-	scatter.cosp = cos(scatter.phi);
-	scatter.sinp = sin(scatter.phi);
-	if ((float)rand()/max < albedo && scatter.z > 0.0 && scatter.z < 1.0){
-		tau = -1.0*log((float)rand()/max);
-		s=tau/taumax;
-		scatter.x +=s*scatter.sint*scatter.cosp;
-		scatter.y +=s*scatter.sint*scatter.sinp;
-		scatter.z +=s*scatter.cost;
-	}
-	return scatter;
+	while (scatterptr->z>=0.0 && scatterptr->z<=1.0){
+		tau = -1.0*log((float)rand()/RAND_MAX);
+		s=tau/TAUMAX;
+		scatterptr->x +=s*scatterptr->sint*scatterptr->cosp;			//x
+		scatterptr->y +=s*scatterptr->sint*scatterptr->sinp;			//y
+		scatterptr->z +=s*scatterptr->cost;					//z
+		if (scatterptr->z<0.0){
+		*scatterptr = *newphoton();
+		}
+		if ((float)rand()/RAND_MAX < ALBEDO && scatterptr->z < 1.0){
+			scatterptr->cost = 2.0*((float)rand()/RAND_MAX) - 1.0;			//cos theta
+			scatterptr->phi = 2.0*M_PI*((float)rand()/RAND_MAX);			//phi
+			scatterptr->sint = sqrt(1-(scatterptr->cost)*(scatterptr->cost));			//sin theta
+			scatterptr->cosp = cos(scatterptr->phi);					//cos phi
+			scatterptr->sinp = sin(scatterptr->phi);					//sin phi
+		}
+	}	
+	return 0;
 }
 
 /*-----------------------Bin photons----------------------------*/
-hist binphotons(float mu[nphotons]){
+hist *binphotons(float mu[]){
 	float dtheta,width;
-	hist binned;
-	int i;
-	dtheta = 1.0/mubins;
+	hist binspace;
+	hist *binned;
+	binned = &binspace;
+	int i,j;
+	dtheta = 1.0/MUBINS;
 	width = 0.5*dtheta;
-	for(i=0;i<(int)mubins;i++){
-		binned.theta[i]=acos(i*dtheta+width)*(180.0/pi);
+	for(i=0;i<MUBINS;i++){
+	binned->bins[i]=0;
+	binned->theta[i]=acos(i*dtheta+width)*(180.0/M_PI);
 	}
-	for(i=0;i<(int)mubins;i++){
-		int j;
-		j=abs((int)(mu[i]*mubins));
-		binned.bins[j]+=1;
+	for(i=0;i<NPHOTONS;i++){
+		j=abs((int)(mu[i]*MUBINS));
+		binned->bins[j]+=1;
 	}
 	return binned;
 }
 /*---------------------Calculate intensity-----------------------*/
-float intensity(hist binned){
+void *intensity(hist *binned, float *p){
 	int i;
-	float intens[(int)mubins];
-	for(i=0;i<(int)mubins;i++){
-	intens[i] = ((float)binned.bins[i]*(float)mubins)/(2.0*(float)nphotons*cos(binned.theta[i]*(float)pi/180.0));
+	for(i=0;i<=(int)MUBINS;i++){
+		p[i] = ((float)binned->bins[i]*(float)MUBINS)/(2.0*(float)NPHOTONS*cos(binned->theta[i]*M_PI/180.0));
 	}
-	return intens;
+	return 0;
 }

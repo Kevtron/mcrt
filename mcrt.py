@@ -1,5 +1,7 @@
 import numpy as np
 import matplotlib.pylab as plt
+import matplotlib.cm as cm
+from mpl_toolkits.mplot3d import Axes3D
 from time import time
 import sys
 
@@ -28,7 +30,7 @@ def binphotons(mu, mubins,n):#bin the photons uniformly from 0-90 degrees.
 	for i in range(mubins):
 		theta[i]=np.arccos(i*dtheta+width)*(180.0/np.pi)
 	for i in range(int(n)):
-		if mu[i]>=0:
+		#if mu[i]>=0:
 		j=abs(int(mu[i]*mubins))
 		bins[j]=bins[j]+1
 	return bins, theta
